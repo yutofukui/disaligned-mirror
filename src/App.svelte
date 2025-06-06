@@ -125,7 +125,7 @@
 <canvas bind:this={canvasEl} width="640" height="480"></canvas>
 
 <div class="controls">
-  <label>ズレ: {distortion}</label>
+  <label>ズレは: {distortion}</label>
   <input type="range" min="0" max="8" bind:value={distortion} />
   <label>速度: {speed}</label>
   <input type="range" min="7" max="18" bind:value={speed} />
