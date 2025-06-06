@@ -1,207 +1,131 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import '@mediapipe/face_mesh';
+  import '@mediapipe/camera_utils';
 
   let videoEl: HTMLVideoElement;
   let canvasEl: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
+
+  let started = false;
+  let distortion = 5;
+  let speed = 10;
   let frameCount = 0;
 
-  let amplitude = 6;
-  let speed = 12;
+  let faceMesh: any;
 
-  const rightEye = [33, 133];
-  const leftEye = [362, 263];
-  const nose = [1, 2, 98, 327];
-  const mouth = [13, 14, 87, 317];
+  const drawPart = (sx, sy, sw, sh, dx, dy, alpha = 1) => {
+    const imageData = ctx.getImageData(sx, sy, sw, sh);
+    ctx.globalAlpha = alpha;
+    ctx.putImageData(imageData, dx, dy);
+    ctx.globalAlpha = 1.0;
+  };
 
-  onMount(() => {
-  const faceMesh = new window.FaceMesh({
-    locateFile: (file: string) =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-  });
+  const onResults = (results) => {
+    if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
 
-  faceMesh.setOptions({
-    maxNumFaces: 1,
-    refineLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
-  });
-
-  faceMesh.onResults(onResults);
-
-  // ✅ カメラ映像を取得し、手動で video に流す
-  navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
-    videoEl.srcObject = stream;
-    videoEl.play().catch((e) => console.warn("autoplay error:", e));
-
-    const camera = new window.Camera(videoEl, {
-      onFrame: async () => {
-        await faceMesh.send({ image: videoEl });
-        frameCount++;
-      },
-      width: 640,
-      height: 480,
-    });
-
-    camera.start();
-  }).catch((err) => {
-    console.error("カメラ取得エラー:", err);
-  });
-});
-
-  function onResults(results: any) {
-    if (!canvasEl || !videoEl) return;
-    if (!ctx) {
-      ctx = canvasEl.getContext('2d', { willReadFrequently: true })!;
-    }
-
-    const width = videoEl.videoWidth;
-    const height = videoEl.videoHeight;
-    if (!width || !height) return;
-
-    canvasEl.width = width;
-    canvasEl.height = height;
-
-    ctx.clearRect(0, 0, width, height);
-    ctx.drawImage(results.image, 0, 0, width, height);
-
-    if (results.multiFaceLandmarks.length > 0) {
-      const landmarks = results.multiFaceLandmarks[0];
-      const safeSpeed = Math.max(speed, 5);
-
-      const dxEye = Math.sin(frameCount / safeSpeed) * amplitude;
-      const dyEye = Math.cos(frameCount / (safeSpeed + 5)) * amplitude;
-      const dxMouth = Math.sin(frameCount / (safeSpeed - 5)) * amplitude;
-      const dyMouth = Math.cos(frameCount / (safeSpeed + 10)) * amplitude;
-      const dxNose = Math.sin(frameCount / (safeSpeed + 15)) * amplitude * 0.5;
-      const dyNose = Math.cos(frameCount / (safeSpeed + 20)) * amplitude * 0.5;
-
-      drawMaskedPart(rightEye, dxEye, dyEye, landmarks);
-      drawMaskedPart(leftEye, -dxEye, dyEye, landmarks);
-      drawMaskedPart(nose, dxNose, dyNose, landmarks);
-      drawMaskedPart(mouth, dxMouth, dyMouth, landmarks);
-    }
-  }
-
-  function drawMaskedPart(indices: number[], dx: number, dy: number, landmarks: any[]) {
-    const region = getBoundingBox(landmarks, indices);
-    const x = Math.round(region.x + dx);
-    const y = Math.round(region.y + dy);
-
-    if (region.w > 1 && region.h > 1 && Number.isFinite(x) && Number.isFinite(y)) {
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = region.w;
-      tempCanvas.height = region.h;
-      const tempCtx = tempCanvas.getContext('2d')!;
-
-      tempCtx.drawImage(
-        canvasEl,
-        region.x,
-        region.y,
-        region.w,
-        region.h,
-        0,
-        0,
-        region.w,
-        region.h
-      );
-
-      const gradient = tempCtx.createRadialGradient(
-        region.w / 2,
-        region.h / 2,
-        region.w * 0.1,
-        region.w / 2,
-        region.h / 2,
-        Math.max(region.w, region.h) / 2
-      );
-      gradient.addColorStop(0, 'rgba(0,0,0,1)');
-      gradient.addColorStop(1, 'rgba(0,0,0,0)');
-
-      tempCtx.globalCompositeOperation = 'destination-in';
-      tempCtx.fillStyle = gradient;
-      tempCtx.fillRect(0, 0, region.w, region.h);
-      tempCtx.globalCompositeOperation = 'source-over';
-
-      ctx.drawImage(tempCanvas, x, y);
-    }
-  }
-
-  function getBoundingBox(landmarks: any[], indices: number[]) {
-    const xs = indices.map(i => landmarks[i].x);
-    const ys = indices.map(i => landmarks[i].y);
-
-    const xMin = Math.min(...xs);
-    const xMax = Math.max(...xs);
-    const yMin = Math.min(...ys);
-    const yMax = Math.max(...ys);
-
+    const landmarks = results.multiFaceLandmarks[0];
     const width = canvasEl.width;
     const height = canvasEl.height;
 
-    const padding = 0.05;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(videoEl, 0, 0, width, height);
 
-    const boxX = Math.max(xMin - padding, 0);
-    const boxY = Math.max(yMin - padding, 0);
-    const boxW = Math.min(xMax - xMin + padding * 2, 1 - boxX);
-    const boxH = Math.min(yMax - yMin + padding * 2, 1 - boxY);
+    const gridSize = 5;
 
-    return {
-      x: Math.floor(boxX * width),
-      y: Math.floor(boxY * height),
-      w: Math.max(~~(boxW * width), 4),
-      h: Math.max(~~(boxH * height), 4),
-    };
-  }
+    for (let y = 0; y < height; y += gridSize) {
+      for (let x = 0; x < width; x += gridSize) {
+        const dx = Math.floor(
+          x + Math.sin((frameCount + x + y) / speed) * distortion
+        );
+        const dy = Math.floor(
+          y + Math.cos((frameCount + x + y) / speed) * distortion
+        );
+        const alpha = 1 - Math.sqrt((x - width / 2) ** 2 + (y - height / 2) ** 2) / (width / 1.5);
+        drawPart(x, y, gridSize, gridSize, dx, dy, alpha);
+      }
+    }
+  };
+
+  const initCamera = () => {
+    started = true;
+
+    faceMesh = new window.FaceMesh({
+      locateFile: (file: string) =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+    });
+
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    });
+
+    faceMesh.onResults(onResults);
+
+    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      videoEl.srcObject = stream;
+      videoEl.play();
+
+      const camera = new window.Camera(videoEl, {
+        onFrame: async () => {
+          await faceMesh.send({ image: videoEl });
+          frameCount++;
+        },
+        width: 640,
+        height: 480,
+      });
+
+      camera.start();
+    });
+  };
+
+  onMount(() => {
+    ctx = canvasEl.getContext('2d', { willReadFrequently: true });
+  });
 </script>
 
-<main>
-  <!-- ✅ iOS Safari対応：playsinline, autoplay, muted を必ず指定 -->
-  <video
-  bind:this={videoEl}
-  autoplay
-  muted
-  playsinline
-  style="display: none;"
-/>
-  <canvas bind:this={canvasEl} />
-
-  <div class="controls">
-    <label>
-      ズレ幅: {amplitude}px
-      <input type="range" min="0" max="8" bind:value={amplitude} />
-    </label>
-    <label>
-      ズレ速度: {speed}
-      <input type="range" min="7" max="18" bind:value={speed} />
-    </label>
-  </div>
-</main>
-
 <style>
+  video {
+    display: none;
+  }
+
   canvas {
-    width: 100vw;
-    height: 100vh;
-    display: block;
-    background: black;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 4 / 3;
+    border: 1px solid #aaa;
   }
 
   .controls {
-    position: absolute;
-    top: 1rem;
-    left: 1rem;
-    background: rgba(0, 0, 0, 0.6);
-    padding: 1rem;
-    border-radius: 0.5rem;
-    color: white;
-    font-size: 0.9rem;
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
   }
 
-  .controls label {
-    display: block;
-    margin-bottom: 1rem;
-  }
-
-  input[type="range"] {
-    width: 200px;
+  label {
+    font-size: 14px;
   }
 </style>
+
+{#if !started}
+  <button on:click={initCamera}>開始</button>
+{/if}
+
+<video
+  bind:this={videoEl}
+  autoplay
+  playsinline
+  muted
+></video>
+
+<canvas bind:this={canvasEl} width="640" height="480"></canvas>
+
+<div class="controls">
+  <label>ズレ幅: {distortion}</label>
+  <input type="range" min="0" max="8" bind:value={distortion} />
+  <label>ズレ速度: {speed}</label>
+  <input type="range" min="7" max="18" bind:value={speed} />
+</div>
