@@ -15,19 +15,24 @@
   const mouth = [13, 14, 87, 317];
 
   onMount(() => {
-    const faceMesh = new window.FaceMesh({
-      locateFile: (file: string) =>
-        `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-    });
+  const faceMesh = new window.FaceMesh({
+    locateFile: (file: string) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+  });
 
-    faceMesh.setOptions({
-      maxNumFaces: 1,
-      refineLandmarks: true,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5,
-    });
+  faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
 
-    faceMesh.onResults(onResults);
+  faceMesh.onResults(onResults);
+
+  // ✅ カメラ映像を取得し、手動で video に流す
+  navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+    videoEl.srcObject = stream;
+    videoEl.play().catch((e) => console.warn("autoplay error:", e));
 
     const camera = new window.Camera(videoEl, {
       onFrame: async () => {
@@ -39,10 +44,10 @@
     });
 
     camera.start();
-
-    // ✅ iOS Safari対応：autoplay許可を強制
-    videoEl.play().catch((e) => console.warn('Autoplay failed:', e));
+  }).catch((err) => {
+    console.error("カメラ取得エラー:", err);
   });
+});
 
   function onResults(results: any) {
     if (!canvasEl || !videoEl) return;
@@ -151,7 +156,13 @@
 
 <main>
   <!-- ✅ iOS Safari対応：playsinline, autoplay, muted を必ず指定 -->
-  <video bind:this={videoEl} playsinline autoplay muted style="display: none;" />
+  <video
+  bind:this={videoEl}
+  autoplay
+  muted
+  playsinline
+  style="display: none;"
+/>
   <canvas bind:this={canvasEl} />
 
   <div class="controls">
