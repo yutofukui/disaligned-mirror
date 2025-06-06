@@ -115,10 +115,11 @@
 {/if}
 
 <video
-  bind:this={videoEl}
   autoplay
   playsinline
   muted
+  width="640"
+  height="480"
 ></video>
 
 <canvas bind:this={canvasEl} width="640" height="480"></canvas>
