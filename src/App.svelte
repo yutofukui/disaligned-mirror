@@ -6,8 +6,8 @@
   let ctx: CanvasRenderingContext2D;
   let frameCount = 0;
 
-  let amplitude = 12;
-  let speed = 30;
+  let amplitude = 6;
+  let speed = 12;
 
   const rightEye = [33, 133];
   const leftEye = [362, 263];
@@ -39,6 +39,9 @@
     });
 
     camera.start();
+
+    // ✅ iOS Safari対応：autoplay許可を強制
+    videoEl.play().catch((e) => console.warn('Autoplay failed:', e));
   });
 
   function onResults(results: any) {
@@ -59,7 +62,6 @@
 
     if (results.multiFaceLandmarks.length > 0) {
       const landmarks = results.multiFaceLandmarks[0];
-
       const safeSpeed = Math.max(speed, 5);
 
       const dxEye = Math.sin(frameCount / safeSpeed) * amplitude;
@@ -70,57 +72,54 @@
       const dyNose = Math.cos(frameCount / (safeSpeed + 20)) * amplitude * 0.5;
 
       drawMaskedPart(rightEye, dxEye, dyEye, landmarks);
-drawMaskedPart(leftEye, -dxEye, dyEye, landmarks);
-drawMaskedPart(nose, dxNose, dyNose, landmarks);
-drawMaskedPart(mouth, dxMouth, dyMouth, landmarks);
+      drawMaskedPart(leftEye, -dxEye, dyEye, landmarks);
+      drawMaskedPart(nose, dxNose, dyNose, landmarks);
+      drawMaskedPart(mouth, dxMouth, dyMouth, landmarks);
     }
   }
 
   function drawMaskedPart(indices: number[], dx: number, dy: number, landmarks: any[]) {
-  const region = getBoundingBox(landmarks, indices);
-  const x = Math.round(region.x + dx);
-  const y = Math.round(region.y + dy);
+    const region = getBoundingBox(landmarks, indices);
+    const x = Math.round(region.x + dx);
+    const y = Math.round(region.y + dy);
 
-  if (region.w > 1 && region.h > 1 && Number.isFinite(x) && Number.isFinite(y)) {
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = region.w;
-    tempCanvas.height = region.h;
-    const tempCtx = tempCanvas.getContext('2d')!;
+    if (region.w > 1 && region.h > 1 && Number.isFinite(x) && Number.isFinite(y)) {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = region.w;
+      tempCanvas.height = region.h;
+      const tempCtx = tempCanvas.getContext('2d')!;
 
-    // 映像からパーツを drawImage で切り取り
-    tempCtx.drawImage(
-      canvasEl,
-      region.x,
-      region.y,
-      region.w,
-      region.h,
-      0,
-      0,
-      region.w,
-      region.h
-    );
+      tempCtx.drawImage(
+        canvasEl,
+        region.x,
+        region.y,
+        region.w,
+        region.h,
+        0,
+        0,
+        region.w,
+        region.h
+      );
 
-    // 黒→透明のマスクを加える
-    const gradient = tempCtx.createRadialGradient(
-      region.w / 2,
-      region.h / 2,
-      region.w * 0.1,
-      region.w / 2,
-      region.h / 2,
-      Math.max(region.w, region.h) / 2
-    );
-    gradient.addColorStop(0, 'rgba(0,0,0,0)');
-    gradient.addColorStop(1, 'rgba(0,0,0,1)');
+      const gradient = tempCtx.createRadialGradient(
+        region.w / 2,
+        region.h / 2,
+        region.w * 0.1,
+        region.w / 2,
+        region.h / 2,
+        Math.max(region.w, region.h) / 2
+      );
+      gradient.addColorStop(0, 'rgba(0,0,0,1)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
-    tempCtx.globalCompositeOperation = 'destination-in';
-    tempCtx.fillStyle = gradient;
-    tempCtx.fillRect(0, 0, region.w, region.h);
-    tempCtx.globalCompositeOperation = 'source-over';
+      tempCtx.globalCompositeOperation = 'destination-in';
+      tempCtx.fillStyle = gradient;
+      tempCtx.fillRect(0, 0, region.w, region.h);
+      tempCtx.globalCompositeOperation = 'source-over';
 
-    // 最終的に main canvas に描画（ズラした位置）
-    ctx.drawImage(tempCanvas, x, y);
+      ctx.drawImage(tempCanvas, x, y);
+    }
   }
-}
 
   function getBoundingBox(landmarks: any[], indices: number[]) {
     const xs = indices.map(i => landmarks[i].x);
@@ -151,7 +150,8 @@ drawMaskedPart(mouth, dxMouth, dyMouth, landmarks);
 </script>
 
 <main>
-  <video bind:this={videoEl} style="display: none;" />
+  <!-- ✅ iOS Safari対応：playsinline, autoplay, muted を必ず指定 -->
+  <video bind:this={videoEl} playsinline autoplay muted style="display: none;" />
   <canvas bind:this={canvasEl} />
 
   <div class="controls">
